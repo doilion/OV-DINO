@@ -151,6 +151,7 @@ class OVDINO(nn.Module):
         # the template for inference.
         self.inference_template = inference_template
         self.app_mode = app_mode
+        self.print_prompt = True
 
     def reset_text_embed_dict(self):
         self.text_embed_dict = defaultdict()
@@ -216,11 +217,23 @@ class OVDINO(nn.Module):
                         [self.language_backbone(name) for name in names], dim=0
                     )  # [bs*num_classes, num_templates, embed_dim]
                     text_embed = text_embed.mean(1)
+                elif (
+                    isinstance(names[0], torch.Tensor)
+                    and not self.language_backbone.post_tokenize
+                ):
+                    text_embed = torch.stack(
+                        [self.language_backbone(name) for name in names[0]], dim=0
+                    )  # [bs*num_classes, num_templates, embed_dim]
+                    text_embed = text_embed.mean(1)
+                elif (
+                    isinstance(names[0], torch.Tensor)
+                    and self.language_backbone.post_tokenize
+                ):
+                    text_embed = names[0]
                 else:
                     text_embed = self.language_backbone(names)
 
                 self.text_embed_dict[chunk_index] = text_embed
-
             else:
                 text_embed = self.text_embed_dict[chunk_index]
         else:
@@ -586,8 +599,14 @@ class OVDINO(nn.Module):
         # process category_names
         category_names = [
             x["category_names"] for x in batched_inputs
-        ]  # list[list[str]]
-        if not self.training and self.inference_template != "identity":
+        ]  # list[list[str]] or list[tensor]
+        if isinstance(category_names[0], torch.Tensor):
+            # case 1: for export model
+            category_names = [
+                torch.tensor(x).to(self.device) for x in category_names
+            ]  # list[tensor]
+        elif not self.training and self.inference_template != "identity":
+            # case 2: for inference
             category_names = [
                 [
                     [
@@ -598,7 +617,16 @@ class OVDINO(nn.Module):
                 ]
                 for batch_cat_names in category_names
             ]
-        category_names = list(itertools.chain(*category_names))
+            category_names = list(itertools.chain(*category_names))
+        elif self.training:
+            # case 3: for training
+            category_names = list(itertools.chain(*category_names))
+        else:
+            raise Exception("Invalid category_names type!")
+
+        if self.print_prompt and not isinstance(category_names[0], torch.Tensor):
+            print(category_names[0])
+            self.print_prompt = False
 
         return images, category_names
 
@@ -623,7 +651,7 @@ class OVDINO(nn.Module):
         # box_pred.shape: 1, 300, 4
         prob = box_cls.sigmoid()
         # follow glip(ref: https://github.com/microsoft/GLIP/blob/a5f302bfd4c5c67010e29f779e3b0bde94e89985/maskrcnn_benchmark/modeling/rpn/inference.py#L510).
-        # We perform sqrt of cls_prob to obtain more larger probility for visulization.
+        # We perform sqrt of cls_prob to obtain more larger probability for visualization.
         prob = torch.sqrt(prob)
         topk_values, topk_indexes = torch.topk(
             prob.view(box_cls.shape[0], -1), self.select_box_nums_for_evaluation, dim=1

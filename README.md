@@ -270,6 +270,27 @@ bash scripts/finetune.sh \
   
 **NOTE**: *We will release the all pre-training code after our paper is accepted.*
 
+### 5. Export ONNX model
+#### Export ONNX model for OV-DINO
+  ```bash
+  cd $root_dir/ovdino
+  bash scripts/export.sh \
+    projects/ovdino/configs/ovdino_swin_tiny224_bert_base_export_onnx.py \
+    ../inits/ovdino/ovdino_swint_ogc-coco50.2_lvismv40.1_lvis32.9.pth \
+    ../wkdrs/export_ovdino \
+    your_test_image.jpg \
+    "class0 class1 class2 ..."
+  ```
+  
+#### Export ONNX Modules Testing
+* Refer to the [test_swin.py](ovdino/tools/deploy/test_swin.py) for the ONNX export testing of the SwinTransformer.
+* Refer to the [test_bert.py](ovdino/tools/deploy/test_bert.py) for the ONNX export testing of the BertModel.
+* Refer to the [test_transformer.py](ovdino/tools/deploy/test_transformer.py) for the ONNX export testing of the Transformer.
+
+swin and bert are matched successfully with torch model ouputs, while transformer is not matched yet. Hope someone could help me to fix it.
+
+**NOTE**: *The onnx model exporting is not fully supported yet, just release for help.*
+
 ## :computer: Demo
 * Local inference on a image or folder give the category names.
   ```bash

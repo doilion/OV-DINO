@@ -96,6 +96,9 @@ class BERTEncoder(nn.Module):
         self.padding_mode = padding_mode
         self.context_length = context_length
         self.post_tokenize = post_tokenize
+        tokenizer_cfg.update(
+            {"padding_mode": padding_mode, "context_length": context_length}
+        )
         self.tokenizer = BERTTokenizer(**tokenizer_cfg)
         lang_model_config = BertConfig.from_pretrained(model_name)
         self.lang_model = BertModel.from_pretrained(
