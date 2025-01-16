@@ -275,7 +275,7 @@ bash scripts/finetune.sh \
   ```bash
   cd $root_dir/ovdino
   bash scripts/export.sh \
-    projects/ovdino/configs/ovdino_swin_tiny224_bert_base_export_onnx.py \
+    projects/ovdino/configs/ovdino_swin_tiny224_bert_base_export_demo.py \
     ../inits/ovdino/ovdino_swint_ogc-coco50.2_lvismv40.1_lvis32.9.pth \
     ../wkdrs/export_ovdino \
     your_test_image.jpg \

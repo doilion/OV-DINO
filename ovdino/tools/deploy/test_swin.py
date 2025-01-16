@@ -49,8 +49,10 @@ image_encoder = nn.Sequential(image_backbone, neck)
 image_encoder.to(device)
 image_encoder.eval()
 
-image_path = "/mnt/dolphinfs/hdd_pool/docker/user/hadoop-automl/wanghao/datas/coco2017/val2017/000000000139.jpg"
-image, height, width = preprocess_image(image_path)
+# image_path = ""
+# image, height, width = preprocess_image(image_path)
+height, width = (800, 1024)
+image = torch.randn(3, height, width)
 image = image.unsqueeze(0).to(device)
 with torch.no_grad():
     image_embed = image_encoder(image)

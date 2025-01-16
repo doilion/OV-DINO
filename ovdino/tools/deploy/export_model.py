@@ -128,24 +128,24 @@ def tokenize_category_names(torch_model, category_names):
     category_names = list(itertools.chain(*category_names))
     if isinstance(category_names[0], list):
         # use the following code to get input_ids
-        input_ids = torch.stack(
-            [
-                torch_model.language_backbone.tokenizer(name, return_mask=True)[
-                    "input_ids"
-                ].squeeze(0)
-                for name in category_names
-            ],
-            dim=0,
-        )
+        # input_ids = torch.stack(
+        #     [
+        #         torch_model.language_backbone.tokenizer(name, return_mask=True)[
+        #             "input_ids"
+        #         ].squeeze(0)
+        #         for name in category_names
+        #     ],
+        #     dim=0,
+        # )
 
         # or use the following code to get text_embed
-        # with torch.no_grad():
-        #     text_embed = torch.stack(
-        #         [torch_model.language_backbone(name) for name in category_names], dim=0
-        #     )  # [bs*num_classes, num_templates, embed_dim]
-        #     text_embed = text_embed.mean(1).cpu()
+        with torch.no_grad():
+            text_embed = torch.stack(
+                [torch_model.language_backbone(name) for name in category_names], dim=0
+            )  # [bs*num_classes, num_templates, embed_dim]
+            text_embed = text_embed.mean(1).cpu()
 
-    return input_ids
+    return text_embed
 
 
 # experimental. API not yet final
@@ -374,8 +374,8 @@ def main() -> None:
             )  # pred_boxes, pred_classes, scores, (height, width)
 
             # Compare outputs
-            logger.info("Comparing outputs...")
             # NOTE: you need to set breakpoint here to compare the outputs
+            logger.info("Comparing outputs...")
             # for torch_out, ort_out in zip(torch_output, ort_outputs):
             #     diff = np.abs(torch_out.cpu().numpy() - ort_out).max()
             #     logger.info(f"Max difference: {diff}")
