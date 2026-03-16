@@ -38,6 +38,7 @@ def load_custom_json(
     num_sampled_classes=-1,
     template="simple",
     test_mode=False,
+    name_mapping=None,
 ):
     """
     Load a json file with COCO's instances annotation format.
@@ -88,6 +89,10 @@ def load_custom_json(
         meta = MetadataCatalog.get(dataset_name)
         cat_ids = sorted(coco_api.getCatIds())
         cats = coco_api.loadCats(cat_ids)
+        if name_mapping:
+            for c in cats:
+                if c["id"] in name_mapping:
+                    c["name"] = name_mapping[c["id"]]
         # The categories in a custom json file may not be sorted.
         thing_classes = [c["name"] for c in sorted(cats, key=lambda x: x["id"])]
         meta.thing_classes = thing_classes
@@ -300,6 +305,7 @@ def register_custom_ovd_instances(
     num_sampled_classes=-1,
     test_mode=True,
     template="identity",
+    name_mapping=None,
 ):
     """
     Register a dataset in COCO's json annotation format for
@@ -330,6 +336,7 @@ def register_custom_ovd_instances(
             num_sampled_classes=num_sampled_classes,
             test_mode=test_mode,
             template=template,
+            name_mapping=name_mapping,
         ),
     )
 
