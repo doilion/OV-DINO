@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# Virtual environment
+ovdino_env/
+
+# Model weights and datasets
+inits/huggingface/
+inits/ovdino/*.pth
+inits/swin/*.pth
+inits/sam2/
+datas/
+
+# Training outputs
+wkdrs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+wandb/
