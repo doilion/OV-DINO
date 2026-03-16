@@ -54,7 +54,7 @@ optimizer.params.lr_factor_func = lambda module_name: (
 dataloader.train.num_workers = 4
 
 # total batch size: 8 GPUs x 1 per GPU = 8
-# (conservative for 2080Ti 11GB with 4112x3008 images resized to ~800x1093)
+# (2080Ti 11GB with AMP, batch_size=2 causes OOM)
 dataloader.train.total_batch_size = 8
 
 # dump the testing results into output_dir for visualization
