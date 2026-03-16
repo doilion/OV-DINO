@@ -21,6 +21,7 @@ from . import (
     # register_custom_ovd,
     register_lvis_ovd,
     register_o365_ovd,
+    register_tct_ngc_ovd,
 )
 from .coco_ovd import register_coco_ovd_instances
 from .imagenet_template import template_meta
