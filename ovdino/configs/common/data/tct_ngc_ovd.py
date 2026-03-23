@@ -5,7 +5,7 @@ from detectron2.data import (
     build_detection_train_loader,
     get_detection_dataset_dicts,
 )
-from detectron2.evaluation import COCOEvaluator
+from detrex.evaluation import ExcludeClassCOCOEvaluator
 from detrex.data import DetrDatasetMapper
 from omegaconf import OmegaConf
 
@@ -89,6 +89,13 @@ dataloader.test = L(build_detection_test_loader)(
     num_workers=4,
 )
 
-dataloader.evaluator = L(COCOEvaluator)(
+dataloader.evaluator = L(ExcludeClassCOCOEvaluator)(
     dataset_name="${..test.dataset.names}",
+    exclude_class_names=[
+        "cervical normal cells",
+        "serous effusion negative samples",
+        "thyroid gland negative samples",
+        "urine cytology negative samples",
+        "respiratory tract negative samples",
+    ],
 )
