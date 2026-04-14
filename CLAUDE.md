@@ -121,9 +121,63 @@ Uses Detectron2's **LazyConfig** with `LazyCall` (`L(...)`) — Python files, no
 - Type checking: mypy (Python 3.7 target)
 - isort sections: FUTURE, STDLIB, THIRDPARTY, detrex (myself), FIRSTPARTY, LOCALFOLDER
 
-## In-Progress Work
+## In-Progress Work: BioMistral Integration on TCT_NGC
 
-- **BioMistral adapter integration**: An adapter MLP maps BioMistral embeddings into BERT's embedding space, with a correspondence loss for alignment. Configs, embedding extraction scripts, and pre-alignment scripts are under development. Relevant files: `ovdino.py` (adapter_mlp/correspondence_loss params), `detrex/layers/biomistral_adapter.py`, `detrex/modeling/language_backbone/precomputed_embedding.py`, `projects/ovdino/modeling/correspondence_loss.py`.
+### Overview
+Replace BERT text encoder with BioMistral-7B precomputed embeddings for medical cell detection (31 classes: 20 base + 11 novel). Uses adapter MLP (4096→768) + STEGO correspondence distillation loss.
+
+### Key Files
+- `detrex/layers/biomistral_adapter.py` — BioMistralAdapterMLP (LayerNorm→Linear→GELU→Dropout→Linear)
+- `detrex/modeling/language_backbone/precomputed_embedding.py` — PrecomputedEmbeddingBackbone (drop-in for BERTEncoder)
+- `projects/ovdino/modeling/correspondence_loss.py` — CorrespondenceDistillationLoss (STEGO)
+- `projects/ovdino/modeling/ovdino.py` — adapter_mlp, correspondence_loss, freeze_visual params
+- `projects/ovdino/configs/models/ovdino_swin_tiny224_biomistral.py` — Model config
+- `projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc.py` — Phase 1 config
+- `projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase2_tct_ngc.py` — Phase 2 config
+- `embeddings/biomistral_tct_ngc.pt` — Precomputed 31×4096 embeddings (in repo)
+- `embeddings/adapter_prealigned.pth` — Pre-aligned adapter weights, Spearman=0.866 (in repo)
+- `scripts/extract_biomistral_embeddings.py` — Phase 0a: extract embeddings
+- `scripts/prealign_adapter.py` — Phase 0b: STEGO pre-alignment
+
+### Completed Steps
+- [x] Phase 0a: BioMistral embedding extraction (31 classes, 4096d, mean pooling, L2 normalized)
+- [x] Phase 0b: Adapter pre-alignment (negative_pressure=0.6, Spearman=0.866)
+- [x] Code integration: adapter MLP, PrecomputedEmbeddingBackbone, CorrespondenceDistillationLoss
+- [x] Config fixes: checkpoint path, test_num_classes=31, negative_pressure 0.4→0.6
+- [x] Hyphen normalization fix in PrecomputedEmbeddingBackbone (high-grade vs high grade)
+- [x] Smoke test passed: loss_corr outputs correctly, no OOM on 8×2080Ti, all 20 classes matched
+
+### Next Steps
+- [ ] Phase 1: Freeze visual, train adapter+ClassEmbed+BBoxEmbed (8 epochs)
+- [ ] Phase 1 eval: base + novel AP
+- [ ] Phase 2: Unfreeze all, joint fine-tuning (16 epochs, backbone 0.1x LR)
+- [ ] Phase 2 eval: base + novel AP
+
+### Training Commands
+```bash
+# Phase 1 (8 epochs, freeze visual)
+bash scripts/finetune.sh \
+  projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc.py \
+  ../inits/ovdino/ovdino_swint_ogc-coco50.2_lvismv40.1_lvis32.9.pth
+
+# Phase 2 (16 epochs, full fine-tuning)
+bash scripts/finetune.sh \
+  projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase2_tct_ngc.py \
+  ./wkdrs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc/model_final.pth
+
+# Eval (base / novel)
+bash scripts/eval.sh projects/ovdino/configs/ovdino_swin_tiny224_biomistral_eval_base.py <ckpt> <output>
+bash scripts/eval.sh projects/ovdino/configs/ovdino_swin_tiny224_biomistral_eval_novel.py <ckpt> <output>
+```
+
+### BERT Baseline Reference (TCT_NGC)
+- Base mAP: ~26-33 | Novel mAP: ~8.81
+
+### Design Decisions
+- `negative_pressure=0.6` (not 0.4) — teacher sim min=0.44, b=0.4 gives 0% repulsive pairs → collapse
+- Correspondence loss weight=100.0 is internal, NOT in criterion weight_dict (avoids double-apply)
+- `tools/train_net.py` is the real entry point (uses cfg.optimizer); `projects/ovdino/train_net.py` is deprecated dead code
+- Reference implementation: https://github.com/doilion/YOLO-WORLD-MEDICAL
 
 ## Important Notes
 - LVIS Val evaluation requires ~250GB RAM
