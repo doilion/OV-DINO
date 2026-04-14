@@ -1,16 +1,10 @@
 #!/usr/bin/env python
 # Copyright (c) Facebook, Inc. and its affiliates.
 """
-Training script using the new "LazyConfig" python config files.
-
-This scripts reads a given python config file and runs the training or evaluation.
-It can be used to train any models or dataset as long as they can be
-instantiated by the recursive construction defined in the given config file.
-
-Besides lazy construction of models, dataloader, etc., this scripts expects a
-few common configuration parameters currently defined in "configs/common/train.py".
-To add more complicated training logic, you can easily add other configs
-in the config file and implement a new train_net.py to handle them.
+DEPRECATED: This is a legacy training script with hardcoded optimizer groups.
+The actual training entry point is tools/train_net.py, which properly uses
+cfg.optimizer from config files. All shell scripts (finetune.sh, pretrain.sh,
+eval.sh) invoke tools/train_net.py, NOT this file.
 """
 import logging
 import os

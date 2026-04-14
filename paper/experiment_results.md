@@ -24,50 +24,52 @@
 - **训练集**: `tct_ngc_train_base_ovd_unipro`（69,590 张）
 - **测试集（Base）**: `tct_ngc_test_base_ovd`（1,607 张）
 - **测试集（Novel）**: `tct_ngc_test_novel_ovd`
-- **总类别数**: 20（15 base + 5 novel）
+- **文档覆盖类别数**: 31（20 base + 11 novel）
 
 ### 类别划分
+
+以下英文类别名严格对齐 TCT_NGC 标注文件中的原始 `categories[].name`。
 
 **Base 类别（20 类，含 5 个阴性类）** — 参与训练：
 
 | 编号 | 类别 | 备注 |
 |:----:|:-----|:-----|
-| 1 | 宫颈非典型鳞状细胞-意义不明确 (ASC-US) | |
-| 2 | 宫颈非典型鳞状细胞-不排除高级别病变 (ASC-H) | |
-| 3 | 宫颈低级别鳞状上皮内病变 (LSIL) | |
-| 4 | 宫颈非典型腺细胞及子宫内膜来源腺癌 (AGC) | |
-| 5 | 宫颈滴虫感染 | |
-| 6 | 宫颈菌群失调伴疱疹和放线菌 | |
-| 7 | 宫颈颈管细胞 | |
-| 8 | 宫颈正常细胞 | 阴性类 |
-| 9 | 浆膜腔积液病变细胞 | |
-| 10 | 浆膜腔积液乳腺癌细胞 | |
-| 11 | 浆膜腔积液阴性样本 | 阴性类 |
-| 12 | 甲状腺乳头状癌 | |
-| 13 | 甲状腺可疑恶性 | |
-| 14 | 甲状腺阴性样本 | 阴性类 |
-| 15 | 尿液细胞学阴性样本 | 阴性类 |
-| 16 | 尿液可疑高级别尿路上皮癌 | |
-| 17 | 尿液非典型尿路上皮细胞 | |
-| 18 | 呼吸道阴性样本 | 阴性类 |
-| 19 | 呼吸道病变细胞 | |
-| 20 | 呼吸道腺癌 | |
+| 1 | normal | 阴性类 |
+| 2 | ascus | |
+| 3 | asch | |
+| 4 | lsil | |
+| 5 | agc_adenocarcinoma_em | |
+| 6 | vaginalis | |
+| 7 | dysbacteriosis_herpes_act | |
+| 8 | ec | |
+| 9 | Serous effusion-Negative samples | 阴性类 |
+| 10 | Serous effusion-Diseased cells | |
+| 11 | Serous effusion-Breast cancer | |
+| 12 | Thyroid gland-Papillary cancer | |
+| 13 | Thyroid gland-Negative samples | 阴性类 |
+| 14 | Thyroid gland-Suspicious for Malignancy | |
+| 15 | Urine-Negative | 阴性类 |
+| 16 | Urine-SHGUC | |
+| 17 | Urine-AUC | |
+| 18 | respiratory tract-Negative samples | 阴性类 |
+| 19 | respiratory tract-Diseased cells | |
+| 20 | respiratory tract-adenocarcinoma | |
 
 **Novel 类别（11 类）** — 零样本，训练中未见：
 
 | 编号 | 类别 |
 |:----:|:-----|
-| 1 | 宫颈高级别鳞状上皮内病变及鳞状细胞癌 (HSIL/SCC) |
-| 2 | 宫颈念珠菌感染 |
-| 3 | 浆膜腔积液卵巢癌细胞 |
-| 4 | 浆膜腔积液腺癌细胞 |
-| 5 | 甲状腺可疑乳头状癌 |
-| 6 | 甲状腺意义不明确的非典型性 (AUS) |
-| 7 | 甲状腺恶性肿瘤 |
-| 8 | 甲状腺不能诊断标本 |
-| 9 | 尿液高级别尿路上皮癌 |
-| 10 | 呼吸道鳞状细胞癌 |
-| 11 | 呼吸道小细胞癌 |
+| 1 | hsil_scc_omn |
+| 2 | monilia |
+| 3 | Serous effusion-Ovarian cancer |
+| 4 | Serous effusion-adenocarcinoma |
+| 5 | Thyroid gland-Suspicious papillary cancer |
+| 6 | Thyroid gland-AUC |
+| 7 | Thyroid gland-Malignant tumour |
+| 8 | Thyroid gland-NS |
+| 9 | Urine-HGUC |
+| 10 | respiratory tract-Squamous cell cinoma |
+| 11 | respiratory tract-Small cell carcinoma |
 
 ---
 
@@ -108,7 +110,7 @@
 
 ### 3.1 Base 类别（排除 5 个阴性类）
 
-使用 `ExcludeClassCOCOEvaluator` 评测，排除：宫颈正常细胞、浆膜腔积液阴性样本、甲状腺阴性样本、尿液细胞学阴性样本、呼吸道阴性样本。
+使用 `ExcludeClassCOCOEvaluator` 评测，排除：normal、Serous effusion-Negative samples、Thyroid gland-Negative samples、Urine-Negative、respiratory tract-Negative samples。
 
 | AP | AP50 | AP75 | APs | APm | APl |
 |:-----:|:-----:|:-----:|:-----:|:-----:|:-----:|
@@ -118,21 +120,21 @@
 
 | 类别 | AP |
 |:-----|:---:|
-| 宫颈非典型鳞状细胞-意义不明确 (ASC-US) | 36.827 |
-| 宫颈非典型鳞状细胞-不排除高级别病变 (ASC-H) | 24.888 |
-| 宫颈低级别鳞状上皮内病变 (LSIL) | 36.447 |
-| 宫颈非典型腺细胞及子宫内膜来源腺癌 (AGC) | 45.183 |
-| 宫颈滴虫感染 | 30.584 |
-| 宫颈菌群失调伴疱疹和放线菌 | 57.909 |
-| 宫颈颈管细胞 | 22.824 |
-| 浆膜腔积液病变细胞 | 35.992 |
-| 浆膜腔积液乳腺癌细胞 | 69.042 |
-| 甲状腺乳头状癌 | 54.106 |
-| 甲状腺可疑恶性 | 31.989 |
-| 尿液可疑高级别尿路上皮癌 | 28.440 |
-| 尿液非典型尿路上皮细胞 | 8.783 |
-| 呼吸道病变细胞 | 15.502 |
-| 呼吸道腺癌 | 1.718 |
+| ascus | 36.827 |
+| asch | 24.888 |
+| lsil | 36.447 |
+| agc_adenocarcinoma_em | 45.183 |
+| vaginalis | 30.584 |
+| dysbacteriosis_herpes_act | 57.909 |
+| ec | 22.824 |
+| Serous effusion-Diseased cells | 35.992 |
+| Serous effusion-Breast cancer | 69.042 |
+| Thyroid gland-Papillary cancer | 54.106 |
+| Thyroid gland-Suspicious for Malignancy | 31.989 |
+| Urine-SHGUC | 28.440 |
+| Urine-AUC | 8.783 |
+| respiratory tract-Diseased cells | 15.502 |
+| respiratory tract-adenocarcinoma | 1.718 |
 
 ### 3.2 Novel 类别（零样本）
 
@@ -146,17 +148,17 @@
 
 | 类别 | AP |
 |:-----|:---:|
-| 宫颈高级别鳞状上皮内病变及鳞状细胞癌 (HSIL/SCC) | 9.952 |
-| 宫颈念珠菌感染 | 0.006 |
-| 浆膜腔积液卵巢癌细胞 | 0.042 |
-| 浆膜腔积液腺癌细胞 | 3.905 |
-| 甲状腺可疑乳头状癌 | 8.068 |
-| 甲状腺意义不明确的非典型性 (AUS) | 0.214 |
-| 甲状腺恶性肿瘤 | 0.547 |
-| 甲状腺不能诊断标本 | 0.092 |
-| 尿液高级别尿路上皮癌 | 69.759 |
-| 呼吸道鳞状细胞癌 | 1.188 |
-| 呼吸道小细胞癌 | 3.117 |
+| hsil_scc_omn | 9.952 |
+| monilia | 0.006 |
+| Serous effusion-Ovarian cancer | 0.042 |
+| Serous effusion-adenocarcinoma | 3.905 |
+| Thyroid gland-Suspicious papillary cancer | 8.068 |
+| Thyroid gland-AUC | 0.214 |
+| Thyroid gland-Malignant tumour | 0.547 |
+| Thyroid gland-NS | 0.092 |
+| Urine-HGUC | 69.759 |
+| respiratory tract-Squamous cell cinoma | 1.188 |
+| respiratory tract-Small cell carcinoma | 3.117 |
 
 ---
 
@@ -166,9 +168,9 @@
 
 2. **Base 类别（排除阴性类后）AP=33.35** — 显著高于全 20 类的 AP（26.66），说明阴性/正常细胞类别由于检测难度大，拉低了整体指标。
 
-3. **Novel 零样本 AP=8.81** — 整体偏低，但存在显著异常值：*尿液高级别尿路上皮癌*达到 69.76 AP，说明形态特征显著的细胞类型具有较强的文本-视觉对齐能力。
+3. **Novel 零样本 AP=8.81** — 整体偏低，但存在显著异常值：*Urine-HGUC* 达到 69.76 AP，说明形态特征显著的细胞类型具有较强的文本-视觉对齐能力。
 
-4. **最难类别**：呼吸道腺癌（Base 中 AP=1.72）、宫颈念珠菌感染（Novel 中 AP=0.006）— 可能与目标尺寸过小（APs 始终为 0.000）以及与阴性样本的视觉相似性有关。
+4. **最难类别**：respiratory tract-adenocarcinoma（Base 中 AP=1.72）、monilia（Novel 中 AP=0.006）— 可能与目标尺寸过小（APs 始终为 0.000）以及与阴性样本的视觉相似性有关。
 
 5. **APs=0.000** 在所有评测中一致出现，表明模型对细胞学图像中的小目标检测能力不足。
 
