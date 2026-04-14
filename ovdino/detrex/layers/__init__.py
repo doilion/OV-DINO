@@ -40,5 +40,6 @@ from .position_embedding import (
     PositionEmbeddingSine,
     get_sine_pos_embed,
 )
+from .biomistral_adapter import BioMistralAdapterMLP
 from .shape_spec import ShapeSpec
 from .transformer import BaseTransformerLayer, TransformerLayerSequence

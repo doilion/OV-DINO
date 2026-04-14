@@ -25,7 +25,7 @@ from .backbone import (
     make_stage,
 )
 from .criterion import BaseCriterion, SetCriterion
-from .language_backbone import BERTEncoder
+from .language_backbone import BERTEncoder, PrecomputedEmbeddingBackbone
 from .losses import (
     CrossEntropyLoss,
     DiceLoss,

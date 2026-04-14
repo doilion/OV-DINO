@@ -3,5 +3,6 @@ from .dino_transformer import (
     DINOTransformerDecoder,
     DINOTransformerEncoder,
 )
+from .correspondence_loss import CorrespondenceDistillationLoss
 from .dn_criterion import DINOCriterion
 from .ovdino import OVDINO

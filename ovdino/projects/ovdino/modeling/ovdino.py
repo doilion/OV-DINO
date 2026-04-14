@@ -63,12 +63,30 @@ class OVDINO(nn.Module):
         text_embed_dim: int = 768,
         inference_template: str = "identity",
         app_mode: bool = False,
+        adapter_mlp: nn.Module = None,
+        adapter_init_checkpoint: str = "",
+        correspondence_loss: nn.Module = None,
+        freeze_visual: bool = False,
     ):
         super().__init__()
         # define backbone and position embedding module
         self.backbone = backbone
         self.language_backbone = language_backbone
         self.position_embedding = position_embedding
+
+        # BioMistral adapter and correspondence loss
+        self.adapter_mlp = adapter_mlp
+        if self.adapter_mlp is not None and adapter_init_checkpoint:
+            import logging
+
+            state = torch.load(adapter_init_checkpoint, map_location="cpu")
+            self.adapter_mlp.load_state_dict(state, strict=True)
+            logging.getLogger(__name__).info(
+                f"Loaded pre-aligned adapter from {adapter_init_checkpoint}"
+            )
+        self.correspondence_loss = correspondence_loss
+        if self.correspondence_loss is not None and self.adapter_mlp is not None:
+            self.correspondence_loss.set_adapter(self.adapter_mlp)
 
         # define neck module
         self.neck = neck
@@ -152,6 +170,10 @@ class OVDINO(nn.Module):
         self.inference_template = inference_template
         self.app_mode = app_mode
 
+        # Phase 1: freeze visual components if requested
+        if freeze_visual:
+            self.freeze_visual()
+
     def reset_text_embed_dict(self):
         self.text_embed_dict = defaultdict()
 
@@ -226,6 +248,10 @@ class OVDINO(nn.Module):
         else:
             self.last_state = "train"
             text_embed = self.language_backbone(names)
+
+        # Apply adapter MLP if present (BioMistral 4096→768)
+        if self.adapter_mlp is not None:
+            text_embed = self.adapter_mlp(text_embed)
 
         num_classes = self.num_classes if self.training else self.test_num_classes
         text_embed = text_embed.view(batch_size, num_classes, -1)
@@ -350,6 +376,11 @@ class OVDINO(nn.Module):
             for k in loss_dict.keys():
                 if k in weight_dict:
                     loss_dict[k] *= weight_dict[k]
+
+            # correspondence distillation loss (STEGO)
+            if self.correspondence_loss is not None:
+                loss_dict["loss_corr"] = self.correspondence_loss()
+
             return loss_dict
         else:
             box_cls = output["pred_logits"]
@@ -651,6 +682,22 @@ class OVDINO(nn.Module):
             result.pred_classes = labels_per_image
             results.append(result)
         return results
+
+    def freeze_visual(self):
+        """Freeze visual backbone, neck, transformer, position embedding, and label encoder.
+
+        Used in Phase 1 training to prevent randomly-initialized adapter MLP
+        from corrupting pre-trained visual features.
+        """
+        for module in [self.backbone, self.neck, self.transformer, self.position_embedding]:
+            module.requires_grad_(False)
+        self.label_enc.requires_grad_(False)
+
+    def unfreeze_visual(self):
+        """Unfreeze all visual components for Phase 2 joint fine-tuning."""
+        for module in [self.backbone, self.neck, self.transformer, self.position_embedding]:
+            module.requires_grad_(True)
+        self.label_enc.requires_grad_(True)
 
     def prepare_targets(self, targets):
         new_targets = []
