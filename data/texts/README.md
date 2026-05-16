@@ -1,38 +1,58 @@
 # PSC text prompts for TCT_NGC
 
-Per-class descriptive prompts used by `PseudoLanguageBackbone`. These map a dataset's bare class names (the ones produced by `detrex.data.datasets.custom_ovd.load_custom_ovd`) to the longer, medically-precise strings that the text encoder actually embeds.
+Per-class long descriptive prompts for ablating "bare class names vs.
+medically-precise sentences" through **OV-DINO's stock BERT encoder**.
+Pure prompt substitution at dataset-registration time — the model and
+checkpoint are untouched.
 
-All files mirror the WeDetect `data/texts/` conventions exactly — they are bit-for-bit reusable across the two repos.
+All files mirror the WeDetect `data/texts/` conventions exactly so they
+are bit-for-bit reusable across the two repos.
 
 ## Files
 
 - **`tct_ngc_class_prompts_base30.json`** — `{class_name: descriptive_prompt}` for the 30-class base split.
-  Style: *"Respiratory tract cytology - Neutrophil"* — plain, descriptive, encoder-agnostic.
-  Use with `PseudoLanguageBackbone(name_to_prompt_path=...)` and `build_text_embeddings.py --prompts` (re-keyed by class name in a JSON of the same shape that `--prompts` expects).
-- **`tct_ngc_class_keys_base30.json`** — `{class_name: taxonomy_key}` for the same 30 classes.
-  Style: *"PSC Category II: Negative — alveolar macrophages"* / *"Bethesda VI: Malignant — papillary thyroid carcinoma"* — uses the actual Papanicolaou Society / Bethesda / Paris / TIS reporting-system labels.
-  Pick this one when you want the text encoder to anchor to clinical taxonomy rather than descriptive phrasing.
-- **`tct_ngc_fullnames_32.json`** — flat `[str, ...]` list of the 32-class test set (base30 + 2 novel), in `categories[].id` ascending order. Feed directly to `build_text_embeddings.py --prompts-list` when building a test-only cache.
+  Style: *"Respiratory tract cytology - Neutrophil"* — plain, descriptive English.
+- **`tct_ngc_class_keys_base30.json`** — same 30 classes keyed to **clinical reporting-system labels** (Papanicolaou Society / Bethesda / Paris / TIS).
+  Style: *"PSC Category II: Negative — alveolar macrophages"* / *"Bethesda VI: Malignant — papillary thyroid carcinoma"*.
+- **`tct_ngc_fullnames_32.json`** — flat 32-prompt list (base30 + 2 novel) sorted by `categories[].id`. For test-set evaluation when the dataset has 32 categories.
 
-## Typical workflow
+## Usage — A/B ablation against stock OV-DINO
+
+Drive the eval through the reference config — it pulls the prompt JSON
+in at `LazyConfig.load()` time and substitutes every `category_names`
+string before the model sees them. No model code changes, no embedding
+caches, no extra dependencies.
 
 ```bash
-# Encode the descriptive prompts with BiomedCLIP, producing the .pth cache
-# that PseudoLanguageBackbone serves at eval time.
-python ovdino/projects/ovdino/data/build_text_embeddings.py \
-    --ann      datas/custom/annotations/test.json \
-    --prompts  data/texts/tct_ngc_class_prompts_base30.json \
-    --encoder  microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --pool     mean --normalize \
-    --out      data/texts/tct_ngc_class_emb_biomedclip.pth
+# Baseline: original OV-DINO + bare class names
+bash ovdino/scripts/eval.sh \
+    ovdino/projects/ovdino/configs/ovdino_swin_tiny224_bert_base_ft_custom_24ep.py \
+    inits/ovdino/ovdino_swint_ogc.pth \
+    wkdrs/eval_bare
 
-# The .pth.name_to_prompt.json sibling is also written; export both for eval:
-export OVDINO_PSC_CACHE=$(realpath data/texts/tct_ngc_class_emb_biomedclip.pth)
-export OVDINO_PSC_NAME2PROMPT=$(realpath data/texts/tct_ngc_class_emb_biomedclip.pth.name_to_prompt.json)
-export OVDINO_PSC_DIM=512
-export OVDINO_PSC_NORMALIZE=1
+# Treatment: original OV-DINO + long PSC prompts (defaults to base30 JSON)
+bash ovdino/scripts/eval.sh \
+    ovdino/projects/ovdino/configs/ovdino_swin_tiny224_bert_base_eval_psc_prompts.py \
+    inits/ovdino/ovdino_swint_ogc.pth \
+    wkdrs/eval_psc
+
+# Treatment variant: same model, taxonomy-keyed labels
+OVDINO_PSC_NAME2PROMPT=$(realpath data/texts/tct_ngc_class_keys_base30.json) \
+bash ovdino/scripts/eval.sh \
+    ovdino/projects/ovdino/configs/ovdino_swin_tiny224_bert_base_eval_psc_prompts.py \
+    inits/ovdino/ovdino_swint_ogc.pth \
+    wkdrs/eval_psc_keys
 ```
+
+All three runs use the same checkpoint, same backbone, same BERT-base
+text encoder, same training-free eval. The only thing that differs is
+the string that BERT tokenizes. That isolates the prompt effect cleanly.
 
 ## Class-name ↔ prompt alignment
 
-Both base30 JSONs are **keyed by the class names** that `MetadataCatalog.thing_classes` produces for the corresponding COCO ann file (sorted by ascending `category_id`). If you regenerate the dataset with renamed classes you must regenerate these JSONs too — `PseudoLanguageBackbone` will raise `KeyError` on a missing entry rather than silently fall back.
+Both base30 JSONs are **keyed by the class names** that
+`MetadataCatalog.thing_classes` produces for the corresponding COCO ann
+file (sorted by ascending `category_id`). If you regenerate the dataset
+with renamed classes you must regenerate these JSONs too —
+`attach_psc_prompts_to_dataset` raises on a missing entry by default
+(opt out with `OVDINO_PSC_STRICT=0`).
