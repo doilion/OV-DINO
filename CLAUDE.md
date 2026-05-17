@@ -2,187 +2,68 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Repository Layout
 
-OV-DINO is a unified open-vocabulary object detection model combining a Swin Transformer visual backbone, BERT language backbone, and DINO transformer detection architecture with Language-Aware Selective Fusion. It achieves state-of-the-art zero-shot detection on COCO and LVIS benchmarks.
+This repo is the official implementation of **OV-DINO** (open-vocabulary detection). The four top-level directories that the shell scripts hard-code (relative to the repo root) are:
 
-## Collaboration Protocol
+- [ovdino/](ovdino/) — all source code (vendored `detectron2-717ab9/`, vendored `detrex/`, the `projects/ovdino/` model, `configs/`, `tools/`, `demo/`, `scripts/`).
+- [datas/](datas/) — datasets (`coco/`, `lvis/`, `o365/`, `custom/`). Exported to `DETECTRON2_DATASETS`.
+- [inits/](inits/) — pretrained checkpoints. `inits/huggingface/` is used as `HF_HOME` for offline BERT loading; `inits/ovdino/` holds OV-DINO weights; `inits/swin/` and `inits/sam2/` hold their respective backbones. Exported to `MODEL_ROOT`.
+- [wkdrs/](wkdrs/) — every script writes outputs (checkpoints, logs, eval dirs) under here.
 
-Claude is the implementation agent for this repository.
+The shell scripts derive `$root_dir` via `realpath $(dirname $0)/../../`, so they must be invoked from `ovdino/scripts/...` (or with that relative path preserved) for `DETECTRON2_DATASETS`, `MODEL_ROOT`, and `HF_HOME` to resolve correctly.
 
-- Make code changes, documentation updates, and PR-ready patches.
-- Do not merge directly to the default branch.
-- Prefer focused PR-sized changes over broad refactors.
-- Preserve checkpoint compatibility and config defaults unless the task explicitly requires changing them.
-- If a change touches training, evaluation, model outputs, data assumptions, or checkpoint loading, summarize the risk in the PR description.
-- If validation is partial, state exactly what was run and what remains unverified.
-- If a result is inferred from code inspection rather than measured, label it as an inference.
+## Install
 
-## PR Expectations
+Two install steps build native code; both are required after a clean clone:
 
-- Use [`.github/pull_request_template.md`](.github/pull_request_template.md) for every PR.
-- When changing model logic, configs, evaluators, or checkpoint loading, include a short reviewer guide.
-- Ask Codex to review the PR after implementation. Recommended PR comment:
-
-```text
-@codex review
-Please focus on:
-- training/inference correctness
-- AMP/DDP safety
-- checkpoint loading compatibility
-- config regressions
-- evaluation metric changes
+```bash
+cd ovdino
+python -m pip install -e detectron2-717ab9   # vendored detectron2 fork
+pip install -e ./                            # builds detrex + the CUDA op detrex._C
 ```
 
-- For local review requests, generate a package with `bash scripts/gen_review.sh`.
-
-## Testing
-
-There are no project-owned tests. Detectron2's vendored tests exist in `detectron2-717ab9/tests/` but are not part of the OV-DINO workflow. Validation is done by running eval scripts against benchmarks.
+`setup.py` compiles `detrex/layers/csrc/*.cu` into `detrex._C`. The default conda env (`ovdino`) is pinned to PyTorch 1.13.1 + CUDA 11.6; the optional `ovsam` env (for OV-SAM = OV-DINO + SAM2) uses PyTorch 2.3.1 + CUDA 12.1. Set `CUDA_HOME` before pip install if the system CUDA differs.
 
 ## Common Commands
 
-All commands run from `ovdino/` directory. Set environment first:
+All training/eval/inference flows are thin wrappers that ultimately call `ovdino/tools/train_net.py` with a detrex LazyConfig file. Run scripts from the repo root:
+
 ```bash
-export root_dir=$(realpath ./OV-DINO)  # or parent of ovdino/
-cd $root_dir/ovdino
+# Zero-shot eval (config decides dataset: COCO / LVIS-MiniVal / LVIS-Val)
+bash ovdino/scripts/eval.sh <config.py> <ckpt.pth> <output_dir>
+
+# Fine-tune (output dir is wkdrs/<config_name>)
+bash ovdino/scripts/finetune.sh <config.py> <init_ckpt.pth>
+
+# Pretrain (single-node defaults; multi-node via NNODES/NODE_RANK/MASTER_ADDR/MASTER_PORT env vars)
+bash ovdino/scripts/pretrain.sh <config.py>
+
+# Inference demo: category_names is a space-separated string; multi-word classes use underscores
+bash ovdino/scripts/demo.sh <demo_config.py> <ckpt.pth> "class0 class1 ..." <input> <output>
+
+# Gradio web demo on :7860 (OV-SAM if running in ovsam env)
+bash ovdino/scripts/app.sh <demo_config.py> <ckpt.pth>
 ```
 
-### Installation
-```bash
-python -m pip install -e detectron2-717ab9
-pip install -e ./  # compiles CUDA extensions in detrex/layers/csrc — requires CUDA_HOME
-```
+Configs live in [ovdino/projects/ovdino/configs/](ovdino/projects/ovdino/configs/) — naming pattern `ovdino_<backbone>_<text_enc>_<task>_<dataset>[_<sched>].py`. Eval/fine-tune configs already point at the matching dataset; do not pair an LVIS config with COCO data.
 
-### Evaluation
-```bash
-bash scripts/eval.sh <config_file> <checkpoint> <output_dir>
-# Example: COCO zero-shot
-bash scripts/eval.sh projects/ovdino/configs/ovdino_swin_tiny224_bert_base_eval_coco.py ../inits/ovdino/<ckpt>.pth ../wkdrs/eval_ovdino
-```
+LazyConfig overrides use dotted `key=value` on the command line, e.g. `train.init_checkpoint=...` `dataloader.evaluator.output_dir=...` `model.num_classes=...`. The scripts append these after `--opts` for demos and directly for `train_net.py`.
 
-### Fine-tuning
-```bash
-# Note: checkpoint is $2; output_dir is auto-derived from config name into wkdrs/
-# MODEL_ROOT env var (default: $root_dir/inits/) is used for backbone/init weights
-bash scripts/finetune.sh <config_file> <pretrained_checkpoint>
-```
-
-### Pre-training (multi-node)
-```bash
-# Output dir auto-derived; MODEL_ROOT used for init weights
-NNODES=2 NODE_RANK=0 MASTER_PORT=$PORT MASTER_ADDR=$ADDR bash scripts/pretrain.sh <config_file>
-```
-
-### Demo Inference
-```bash
-# CLI: category names are space-separated, multi-word classes use underscores
-bash scripts/demo.sh <config> <checkpoint> "cat dog person" <input_images> <output_dir>
-# Web UI (Gradio at http://127.0.0.1:7860)
-bash scripts/app.sh <config> <checkpoint>
-```
+There is also [ovdino/tools/hydra_train_net.py](ovdino/tools/hydra_train_net.py) for slurm + hydra launches (`configs/hydra/slurm/<cluster>.yaml`), [tools/benchmark.py](ovdino/tools/benchmark.py) for train/eval/data speed, and [tools/visualize_data.py](ovdino/tools/visualize_data.py) / [tools/visualize_json_results.py](ovdino/tools/visualize_json_results.py) for sanity checks.
 
 ## Architecture
 
-### Key Directories (under `ovdino/`)
-- `projects/ovdino/modeling/` — Core model: `ovdino.py` (main class), `dino_transformer.py` (encoder-decoder), `dn_criterion.py` (denoising loss)
-- `projects/ovdino/configs/` — Model and task configs (eval, finetune, pretrain, demo variants)
-- `detrex/` — Reusable detection transformer framework (modeling, layers with CUDA extensions, data, checkpoint utils)
-- `detrex/modeling/language_backbone/bert.py` — BERT encoder wrapper (known quirks: projection param is named `text_porj` [typo]; `pooling_mode="max"` actually takes the [EOS] token, not a max-pool; `post_tokenize=True` calls `.cuda()` directly inside forward)
-- `detectron2-717ab9/` — Detectron2 submodule (detection framework dependency)
-- `configs/common/` — Shared configs for data loaders, training, optimization, schedules
-- `tools/train_net.py` — Main training/eval entry point
-- `demo/` — `demo.py` (CLI), `app.py` (Gradio web UI), `predictors.py` (inference class)
-- `scripts/` — Shell wrappers: `eval.sh`, `finetune.sh`, `pretrain.sh`, `demo.sh`, `app.sh`
+**Three stacked codebases.** The repo vendors two upstream libraries plus its own model:
 
-### Configuration System
-Uses Detectron2's **LazyConfig** with `LazyCall` (`L(...)`) — Python files, not YAML. Model configs in `projects/ovdino/configs/models/` compose the full model inline. Task configs (eval, finetune, pretrain) import a model config and override common configs from `configs/common/`.
+1. `ovdino/detectron2-717ab9/` — pinned detectron2 fork. Installed editable; do not assume system detectron2.
+2. `ovdino/detrex/` — IDEA's DETR-family library, installed as the editable package `detrex` (version 0.3.0). Provides the backbone/neck/transformer/criterion/matcher/EMA building blocks and the LazyConfig-driven dataset registration (`detrex/data/datasets/register_*_ovd.py`).
+3. `ovdino/projects/ovdino/` — the OV-DINO model itself: [modeling/ovdino.py](ovdino/projects/ovdino/modeling/ovdino.py) (`OVDINO` nn.Module = vision backbone + language backbone + neck + DINO transformer + criterion), [modeling/dino_transformer.py](ovdino/projects/ovdino/modeling/dino_transformer.py), [modeling/dn_criterion.py](ovdino/projects/ovdino/modeling/dn_criterion.py), [modeling/two_stage_criterion.py](ovdino/projects/ovdino/modeling/two_stage_criterion.py).
 
-### Training Internals (`projects/ovdino/train_net.py`)
-- **Hardcoded per-group learning rates**: backbone and `reference_points`/`sampling_offsets` get 10x lower LR (2e-5 vs 2e-4). These are not read from config — they are hardwired in `do_train`.
-- AMP and gradient clipping are merged into a single `Trainer` class.
-- `num_classes` (training, e.g. 150) and `test_num_classes` (eval, e.g. 80) are separate model params — the split is important for zero-shot eval on datasets with different class counts.
+**Config-as-code (detrex/detectron2 LazyConfig).** Each top-level config in `projects/ovdino/configs/` imports a base model from `configs/models/`, a dataloader from `configs/common/data/<dataset>_ovd.py`, a schedule from `configs/common/{coco,common,pretrain}_schedule.py`, and the training defaults from [configs/common/train.py](ovdino/configs/common/train.py). Components are constructed by `detectron2.config.instantiate` at runtime, which is why CLI overrides target dotted attribute paths.
 
-### Data Pipeline
-- Datasets expected in `datas/` at repo root: `coco/`, `lvis/` (symlinked to COCO images), `o365/`, `custom/`
-- All use COCO JSON annotation format
-- Custom datasets must follow the spec in `configs/common/data/custom_ovd.py`
-- Environment variable `DETECTRON2_DATASETS` controls dataset root
+**Open-vocabulary dataset registration.** Each dataset has a paired `<name>_ovd.py` (builds the dataloader/evaluator) and `register_<name>_ovd.py` (registers a detectron2 dataset that emits language prompts alongside images). The "OVD" naming distinguishes them from stock detectron2 datasets — always use the `_ovd` variants for OV-DINO.
 
-### Environment Variables
-- `DETECTRON2_DATASETS` — Dataset root (default: `$root_dir/datas/`)
-- `MODEL_ROOT` — Checkpoint root (default: `$root_dir/inits/`)
-- `HF_HOME` — HuggingFace cache (default: `$root_dir/inits/huggingface`)
-- `CUDA_HOME` — Required if not using default CUDA 11.6
+**Custom datasets.** Follow inline instructions in [ovdino/configs/common/data/custom_ovd.py](ovdino/configs/common/data/custom_ovd.py): convert to COCO format, edit the meta-info block to list your class names, then use `ovdino_swin_tiny224_bert_base_ft_custom_24ep.py` as the fine-tune config.
 
-## Code Style
-- Line length: 100
-- Formatting: Black 22.3.0, isort 4.3.21, Flake8 3.8.1
-- Type checking: mypy (Python 3.7 target)
-- isort sections: FUTURE, STDLIB, THIRDPARTY, detrex (myself), FIRSTPARTY, LOCALFOLDER
-
-## In-Progress Work: BioMistral Integration on TCT_NGC
-
-### Overview
-Replace BERT text encoder with BioMistral-7B precomputed embeddings for medical cell detection (31 classes: 20 base + 11 novel). Uses adapter MLP (4096→768) + STEGO correspondence distillation loss.
-
-### Key Files
-- `detrex/layers/biomistral_adapter.py` — BioMistralAdapterMLP (LayerNorm→Linear→GELU→Dropout→Linear)
-- `detrex/modeling/language_backbone/precomputed_embedding.py` — PrecomputedEmbeddingBackbone (drop-in for BERTEncoder)
-- `projects/ovdino/modeling/correspondence_loss.py` — CorrespondenceDistillationLoss (STEGO)
-- `projects/ovdino/modeling/ovdino.py` — adapter_mlp, correspondence_loss, freeze_visual params
-- `projects/ovdino/configs/models/ovdino_swin_tiny224_biomistral.py` — Model config
-- `projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc.py` — Phase 1 config
-- `projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase2_tct_ngc.py` — Phase 2 config
-- `embeddings/biomistral_tct_ngc.pt` — Precomputed 31×4096 embeddings (in repo)
-- `embeddings/adapter_prealigned.pth` — Pre-aligned adapter weights, Spearman=0.866 (in repo)
-- `scripts/extract_biomistral_embeddings.py` — Phase 0a: extract embeddings
-- `scripts/prealign_adapter.py` — Phase 0b: STEGO pre-alignment
-
-### Completed Steps
-- [x] Phase 0a: BioMistral embedding extraction (31 classes, 4096d, mean pooling, L2 normalized)
-- [x] Phase 0b: Adapter pre-alignment (negative_pressure=0.6, Spearman=0.866)
-- [x] Code integration: adapter MLP, PrecomputedEmbeddingBackbone, CorrespondenceDistillationLoss
-- [x] Config fixes: checkpoint path, test_num_classes=31, negative_pressure 0.4→0.6
-- [x] Hyphen normalization fix in PrecomputedEmbeddingBackbone (high-grade vs high grade)
-- [x] Smoke test passed: loss_corr outputs correctly, no OOM on 8×2080Ti, all 20 classes matched
-
-### Next Steps
-- [ ] Phase 1: Freeze visual, train adapter+ClassEmbed+BBoxEmbed (8 epochs)
-- [ ] Phase 1 eval: base + novel AP
-- [ ] Phase 2: Unfreeze all, joint fine-tuning (16 epochs, backbone 0.1x LR)
-- [ ] Phase 2 eval: base + novel AP
-
-### Training Commands
-```bash
-# Phase 1 (8 epochs, freeze visual)
-bash scripts/finetune.sh \
-  projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc.py \
-  ../inits/ovdino/ovdino_swint_ogc-coco50.2_lvismv40.1_lvis32.9.pth
-
-# Phase 2 (16 epochs, full fine-tuning)
-bash scripts/finetune.sh \
-  projects/ovdino/configs/ovdino_swin_tiny224_biomistral_phase2_tct_ngc.py \
-  ./wkdrs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc/model_final.pth
-
-# Eval (base / novel)
-bash scripts/eval.sh projects/ovdino/configs/ovdino_swin_tiny224_biomistral_eval_base.py <ckpt> <output>
-bash scripts/eval.sh projects/ovdino/configs/ovdino_swin_tiny224_biomistral_eval_novel.py <ckpt> <output>
-```
-
-### BERT Baseline Reference (TCT_NGC)
-- Base mAP: ~26-33 | Novel mAP: ~8.81
-
-### Design Decisions
-- `negative_pressure=0.6` (not 0.4) — teacher sim min=0.44, b=0.4 gives 0% repulsive pairs → collapse
-- Correspondence loss weight=100.0 is internal, NOT in criterion weight_dict (avoids double-apply)
-- `tools/train_net.py` is the real entry point (uses cfg.optimizer); `projects/ovdino/train_net.py` is deprecated dead code
-- Reference implementation: https://github.com/doilion/YOLO-WORLD-MEDICAL
-
-## Important Notes
-- LVIS Val evaluation requires ~250GB RAM
-- Default O365 pre-training uses batch size 64 on 2 nodes x 8 A100 GPUs
-- Pre-trained checkpoints go in `inits/ovdino/`; Swin backbone in `inits/swin/`
-- Training outputs go to `wkdrs/<config_name>/`
-- Distributed training uses PyTorch DDP with optional AMP and gradient clipping (max_norm=0.1)
-- Keep datasets, model weights, logs, and other generated artifacts out of PRs unless explicitly requested
+**Language backbone offline.** Scripts set `TRANSFORMERS_OFFLINE=1` and `HF_HOME=$root_dir/inits/huggingface`, so the BERT text encoder must already be cached under `inits/huggingface/` before any training/eval — first-time setup needs to populate that cache while online.
