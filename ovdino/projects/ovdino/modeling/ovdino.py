@@ -1,7 +1,7 @@
 import copy
 import itertools
 from collections import defaultdict
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ class OVDINO(nn.Module):
     def __init__(
         self,
         backbone: nn.Module,
-        language_backbone: nn.Module,
+        language_backbone: Optional[nn.Module],
         position_embedding: nn.Module,
         neck: nn.Module,
         transformer: nn.Module,
@@ -67,12 +67,48 @@ class OVDINO(nn.Module):
         adapter_init_checkpoint: str = "",
         correspondence_loss: nn.Module = None,
         freeze_visual: bool = False,
+        use_random_text_embedding: bool = False,
+        random_vocab_names: Optional[List[str]] = None,
+        random_embed_init_std: float = 0.02,
+        freeze_random_embedding: bool = False,
     ):
         super().__init__()
         # define backbone and position embedding module
         self.backbone = backbone
-        self.language_backbone = language_backbone
         self.position_embedding = position_embedding
+
+        # ablation: replace text encoder with a per-class learnable table.
+        # Stable name -> row mapping so the same class name always hits the
+        # same row across the per-batch class sampling in custom_ovd.py.
+        self.use_random_text_embedding = use_random_text_embedding
+        if self.use_random_text_embedding:
+            if not random_vocab_names:
+                raise ValueError(
+                    "use_random_text_embedding=True requires non-empty "
+                    "random_vocab_names (cleaned canonical class names)."
+                )
+            self._random_vocab = [
+                clean_words_or_phrase(n) for n in random_vocab_names
+            ]
+            self._name_to_id: Dict[str, int] = {
+                n: i for i, n in enumerate(self._random_vocab)
+            }
+            # longest-first for unambiguous substring fallback against templates
+            self._random_vocab_by_len = sorted(
+                self._random_vocab, key=len, reverse=True
+            )
+            self.random_text_embedding = nn.Embedding(
+                len(self._random_vocab), text_embed_dim
+            )
+            nn.init.normal_(
+                self.random_text_embedding.weight, mean=0.0, std=random_embed_init_std
+            )
+            if freeze_random_embedding:
+                self.random_text_embedding.weight.requires_grad_(False)
+            # drop the text encoder entirely to save memory / params
+            self.language_backbone = None
+        else:
+            self.language_backbone = language_backbone
 
         # BioMistral adapter and correspondence loss
         self.adapter_mlp = adapter_mlp
@@ -177,6 +213,28 @@ class OVDINO(nn.Module):
     def reset_text_embed_dict(self):
         self.text_embed_dict = defaultdict()
 
+    def _resolve_random_ids(self, names):
+        """Map incoming class-name strings (possibly template-wrapped) to stable
+        row indices in ``self.random_text_embedding``. Exact match first, then
+        longest-substring fallback (needed because training uses
+        template="full" which wraps cleaned names)."""
+        ids = []
+        for name in names:
+            key = clean_words_or_phrase(name)
+            hit = self._name_to_id.get(key)
+            if hit is None:
+                for cand in self._random_vocab_by_len:
+                    if cand in key:
+                        hit = self._name_to_id[cand]
+                        break
+            if hit is None:
+                raise KeyError(
+                    f"Random-embedding ablation could not resolve class name "
+                    f"{name!r} against vocab of size {len(self._random_vocab)}"
+                )
+            ids.append(hit)
+        return torch.as_tensor(ids, dtype=torch.long, device=self.device)
+
     def forward(self, batched_inputs):
         """Forward function of `DINO` which excepts a list of dict as inputs.
 
@@ -227,7 +285,20 @@ class OVDINO(nn.Module):
         features = self.backbone(images.tensor)  # output feature dict
 
         # inference with many templates
-        if not self.training:
+        if self.use_random_text_embedding:
+            # Skip text encoder entirely; look up per-class learnable rows by name.
+            # Handles both flat list[str] and (eval-only) list[list[str]] shapes.
+            if not self.training and isinstance(names[0], list):
+                flat_names = [n[0] for n in names]  # templates collapse to same id
+            else:
+                flat_names = names
+            if not self.training:
+                self.last_state = "eval"
+            else:
+                self.last_state = "train"
+            ids = self._resolve_random_ids(flat_names)
+            text_embed = self.random_text_embedding(ids)
+        elif not self.training:
             if last_state == "train":
                 self.reset_text_embed_dict()
                 self.last_state = "eval"
