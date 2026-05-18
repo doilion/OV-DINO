@@ -17,8 +17,8 @@ dataloader.test = L(build_detection_test_loader)(
     mapper=L(DetrDatasetMapper)(
         augmentation=[
             L(T.ResizeShortestEdge)(
-                short_edge_length=800,
-                max_size=1333,
+                short_edge_length=640,
+                max_size=1024,
             ),
         ],
         augmentation_with_crop=None,

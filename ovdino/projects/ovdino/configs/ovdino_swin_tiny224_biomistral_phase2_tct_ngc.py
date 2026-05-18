@@ -13,7 +13,7 @@ from detrex.config import get_config
 from .models.ovdino_swin_tiny224_biomistral import model
 
 # Load Phase 1 checkpoint
-init_checkpoint = "./wkdrs/ovdino_biomistral_phase1_tct_ngc/model_final.pth"
+init_checkpoint = "./wkdrs/ovdino_swin_tiny224_biomistral_phase1_tct_ngc/model_final.pth"
 
 # get default config
 dataloader = get_config("common/data/tct_ngc_ovd.py").dataloader
@@ -28,7 +28,7 @@ lr_multiplier = multi_steps_scheduler(16, [11, 14], 500, 69590, 8)
 
 # training config
 train.init_checkpoint = init_checkpoint
-train.output_dir = "./wkdrs/ovdino_biomistral_phase2_tct_ngc"
+train.output_dir = "./wkdrs/ovdino_swin_tiny224_biomistral_phase2_tct_ngc"
 train.max_iter = 139200  # ~16 epochs
 train.eval_period = 8700
 train.log_period = 50
